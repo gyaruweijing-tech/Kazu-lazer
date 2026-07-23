@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>カズレーザー（光線）</title>
+<style>
+  :root{
+    --gold:#ffcf2e; --red:#ff2d2d; --cyan:#38f6ff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:#05030b;font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:#fff;user-select:none}
+  #stage{position:fixed;inset:0;overflow:hidden;
+    background:
+      radial-gradient(1200px 900px at 50% 120%, #2a0d3a 0%, #12071f 45%, #05030b 100%);
+  }
+  /* stars */
+  #stars{position:absolute;inset:0;pointer-events:none}
+  .star{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;opacity:.6;animation:tw 3s infinite ease-in-out}
+  @keyframes tw{0%,100%{opacity:.15}50%{opacity:.9}}
+
+  canvas#fx{position:absolute;inset:0;pointer-events:none;z-index:5}
+
+  /* target dots */
+  .target{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
+    cursor:crosshair;z-index:4;
+    background:radial-gradient(circle at 35% 30%,#fff, #ff5be1 40%,#7a1bff 75%,rgba(122,27,255,0));
+    box-shadow:0 0 14px 4px rgba(255,91,225,.8),0 0 34px 10px rgba(122,27,255,.55);
+    animation:pop .18s ease-out, float 2.4s ease-in-out infinite;
+  }
+  .target::after{content:"";position:absolute;inset:8px;border-radius:50%;background:#fff;opacity:.9;filter:blur(1px)}
+  @keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  .target.dying{animation:die .18s forwards}
+  @keyframes die{to{transform:scale(2.4);opacity:0}}
+
+  /* Kazu */
+  #kazuWrap{position:absolute;left:50%;bottom:-14px;transform:translateX(-50%);z-index:6;
+    width:min(46vw,300px);pointer-events:none;transition:filter .12s}
+  #kazu{width:100%;display:block;filter:drop-shadow(0 8px 22px rgba(0,0,0,.6));
+    image-rendering:pixelated;transform-origin:52% 72%}
+  #kazuWrap.fire #kazu{filter:drop-shadow(0 0 18px var(--cyan)) drop-shadow(0 0 40px rgba(56,246,255,.7)) brightness(1.15)}
+  /* glowing eyes overlay */
+  .eye{position:absolute;width:12%;height:8%;border-radius:50%;opacity:0;z-index:7;pointer-events:none;
+    background:radial-gradient(circle,#fff, var(--cyan) 45%, rgba(56,246,255,0) 75%);
+    filter:blur(2px);transition:opacity .1s}
+  #eyeL{left:33%;top:44%}#eyeR{left:55%;top:44%}
+  #kazuWrap.charged .eye,#kazuWrap.fire .eye{opacity:1;animation:eyepulse .6s infinite}
+  @keyframes eyepulse{0%,100%{opacity:.7}50%{opacity:1}}
+
+  /* SPIN mode */
+  #kazuWrap.spin{animation:spin 1s linear infinite;filter:drop-shadow(0 0 30px var(--gold)) drop-shadow(0 0 60px var(--red))}
+  @keyframes spin{to{transform:translateX(-50%) rotate(360deg)}}
+
+  /* HUD */
+  #hud{position:absolute;top:0;left:0;right:0;z-index:10;padding:14px 16px;display:flex;
+    justify-content:space-between;align-items:flex-start;pointer-events:none}
+  .panel{background:rgba(0,0,0,.32);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;padding:8px 14px}
+  #score{font-weight:900;font-size:26px;letter-spacing:.5px;font-variant-numeric:tabular-nums;
+    text-shadow:0 0 10px rgba(255,207,46,.6)}
+  #score small{font-size:12px;font-weight:700;opacity:.7;display:block;letter-spacing:2px}
+  #combo{color:var(--gold);font-weight:900;font-size:15px;min-height:18px;text-shadow:0 0 8px rgba(255,207,46,.7)}
+  #titleTag{text-align:right}
+  #titleTag b{font-size:16px;color:var(--gold);text-shadow:0 0 10px rgba(255,45,45,.6)}
+  #titleTag span{font-size:11px;opacity:.65;display:block}
+
+  /* charge gauge */
+  #gauge{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:10;
+    width:min(70vw,340px);pointer-events:none;text-align:center}
+  #gaugeBar{height:14px;border-radius:10px;background:rgba(255,255,255,.12);overflow:hidden;
+    border:1px solid rgba(255,255,255,.2);box-shadow:inset 0 0 8px rgba(0,0,0,.5)}
+  #gaugeFill{height:100%;width:0;border-radius:10px;
+    background:linear-gradient(90deg,#38f6ff,#ffcf2e,#ff2d2d);
+    box-shadow:0 0 16px rgba(255,207,46,.8);transition:width .18s}
+  #gaugeLabel{font-size:11px;font-weight:800;letter-spacing:2px;margin-top:5px;opacity:.85}
+  #gauge.full #gaugeLabel{color:var(--gold);animation:blink .5s infinite;opacity:1}
+  @keyframes blink{50%{opacity:.35}}
+
+  /* big center banner */
+  #banner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:11;
+    pointer-events:none;opacity:0}
+  #banner.show{animation:bannerAnim 1.4s ease-out}
+  #banner b{font-size:min(15vw,120px);font-weight:900;font-style:italic;letter-spacing:-2px;
+    background:linear-gradient(180deg,#fff,#ffcf2e 45%,#ff2d2d);-webkit-background-clip:text;background-clip:text;
+    color:transparent;text-shadow:0 0 40px rgba(255,45,45,.5);transform:rotate(-6deg)}
+  @keyframes bannerAnim{0%{opacity:0;transform:scale(.4)}20%{opacity:1;transform:scale(1.05)}
+    70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.2)}}
+
+  /* start overlay */
+  #start{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;gap:18px;background:rgba(5,3,11,.72);backdrop-filter:blur(3px)}
+  #start h1{font-size:min(13vw,86px);font-weight:900;font-style:italic;letter-spacing:-3px;line-height:.95;
+    background:linear-gradient(180deg,#fff,#ffcf2e 50%,#ff2d2d);-webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 0 50px rgba(255,45,45,.4)}
+  #start h1 span{font-size:.34em;-webkit-text-fill-color:#fff;color:#fff;display:block;letter-spacing:6px;opacity:.85;font-style:normal}
+  #start p{max-width:340px;font-size:14px;line-height:1.7;opacity:.85}
+  #playBtn{pointer-events:auto;cursor:pointer;border:none;font-family:inherit;font-weight:900;font-size:20px;
+    color:#1a0533;padding:14px 44px;border-radius:40px;
+    background:linear-gradient(180deg,#fff,#ffcf2e);box-shadow:0 0 30px rgba(255,207,46,.7);
+    transition:transform .12s}
+  #playBtn:active{transform:scale(.94)}
+  #muteBtn{position:absolute;top:14px;right:14px;z-index:12;pointer-events:auto;cursor:pointer;
+    background:rgba(0,0,0,.32);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:12px;
+    padding:7px 11px;font-size:16px}
+  .hint{font-size:12px;opacity:.55}
+  #flash{position:absolute;inset:0;background:#fff;opacity:0;z-index:9;pointer-events:none;mix-blend-mode:screen}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="stars"></div>
+  <div id="flash"></div>
+  <canvas id="fx"></canvas>
+
+  <div id="kazuWrap">
+    <div class="eye" id="eyeL"></div>
+    <div class="eye" id="eyeR"></div>
+    <img id="kazu" src="assets/kazu.png" alt="カズレーザー">
+  </div>
+
+  <div id="hud">
+    <div class="panel">
+      <div id="score"><small>SCORE</small>0</div>
+      <div id="combo"></div>
+    </div>
+    <div class="panel" id="titleTag"><b>カズレーザー</b><span>（光線）</span></div>
+  </div>
+
+  <button id="muteBtn" title="音">🔊</button>
+
+  <div id="gauge">
+    <div id="gaugeBar"><div id="gaugeFill"></div></div>
+    <div id="gaugeLabel">CHARGE</div>
+  </div>
+
+  <div id="banner"><b>回転乱れ撃ち！</b></div>
+
+  <div id="start">
+    <h1>カズレーザー<span>（ 光 線 ）</span></h1>
+    <p>ランダムに現れる<b>点</b>を狙って撃つだけ。<br>口からレーザーが出ます。ただそれだけ。<br>チャージが満タンになると…？</p>
+    <button id="playBtn">撃つ</button>
+    <div class="hint">点をタップ / クリックで発射</div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const stage=$('#stage'), fx=$('#fx'), ctx=fx.getContext('2d');
+const kazuWrap=$('#kazuWrap'), kazu=$('#kazu');
+const scoreEl=$('#score'), comboEl=$('#combo');
+const gauge=$('#gauge'), gaugeFill=$('#gaugeFill'), gaugeLabel=$('#gaugeLabel');
+const banner=$('#banner'), flash=$('#flash');
+
+let W,H,DPR;
+function resize(){
+  DPR=Math.min(devicePixelRatio||1,2);
+  W=innerWidth;H=innerHeight;
+  fx.width=W*DPR;fx.height=H*DPR;fx.style.width=W+'px';fx.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize',resize);resize();
+
+/* stars */
+(function(){let s='';for(let i=0;i<70;i++){
+  s+=`<div class="star" style="left:${Math.random()*100}%;top:${Math.random()*100}%;animation-delay:${Math.random()*3}s;transform:scale(${.5+Math.random()*1.5})"></div>`;
+}$('#stars').innerHTML=s;})();
+
+/* ---- audio (tiny synth) ---- */
+let AC=null, muted=false;
+function ac(){if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();}return AC;}
+function zap(freq=880){
+  if(muted)return;const c=ac();const t=c.currentTime;
+  const o=c.createOscillator(),g=c.createGain();
+  o.type='sawtooth';o.frequency.setValueAtTime(freq*2,t);o.frequency.exponentialRampToValueAtTime(freq*.5,t+.18);
+  g.gain.setValueAtTime(.22,t);g.gain.exponentialRampToValueAtTime(.001,t+.22);
+  o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+.24);
+}
+function boom(){
+  if(muted)return;const c=ac();const t=c.currentTime;
+  const o=c.createOscillator(),g=c.createGain();
+  o.type='square';o.frequency.setValueAtTime(160,t);o.frequency.exponentialRampToValueAtTime(40,t+.35);
+  g.gain.setValueAtTime(.3,t);g.gain.exponentialRampToValueAtTime(.001,t+.4);
+  o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+.42);
+}
+$('#muteBtn').onclick=()=>{muted=!muted;$('#muteBtn').textContent=muted?'🔇':'🔊';};
+
+/* ---- game state ---- */
+let score=0, combo=0, comboTimer=0, charge=0, CHARGE_MAX=8, spinning=false, running=false;
+const targets=new Set();
+
+function mouthPos(){
+  const r=kazu.getBoundingClientRect();
+  return {x:r.left+r.width*0.52, y:r.top+r.height*0.74};
+}
+
+function spawnTarget(x,y){
+  const el=document.createElement('div');
+  el.className='target';
+  x = x ?? (40+Math.random()*(W-80));
+  y = y ?? (70+Math.random()*(H*0.62));
+  el.style.left=x+'px';el.style.top=y+'px';
+  el.addEventListener('pointerdown',e=>{e.preventDefault();shoot(el);},{passive:false});
+  stage.appendChild(el);targets.add(el);
+}
+
+function setScore(n){score=n;scoreEl.innerHTML='<small>SCORE</small>'+score;}
+function setCombo(n){combo=n;comboEl.textContent=combo>1?combo+' COMBO!':'';}
+
+function addCharge(){
+  if(spinning)return;
+  charge=Math.min(CHARGE_MAX,charge+1);
+  gaugeFill.style.width=(charge/CHARGE_MAX*100)+'%';
+  if(charge>=CHARGE_MAX){gauge.classList.add('full');gaugeLabel.textContent='★ MAX ★ もう1発で回転';kazuWrap.classList.add('charged');}
+  else gaugeLabel.textContent='CHARGE';
+}
+
+/* ---- shooting ---- */
+function shoot(el){
+  if(!running)return;
+  const r=el.getBoundingClientRect();
+  const tx=r.left+r.width/2, ty=r.top+r.height/2;
+  const m=mouthPos();
+  fireBeam(m.x,m.y,tx,ty);
+  zap(700+Math.random()*500);
+  // kill target
+  el.classList.add('dying');targets.delete(el);
+  setTimeout(()=>el.remove(),180);
+  burst(tx,ty);
+  screenFlash(.28);shake(6);
+  // score + combo
+  combo++;comboTimer=90;
+  setCombo(combo);
+  setScore(score+100*Math.max(1,combo));
+  if(charge>=CHARGE_MAX){enterSpin();}else{addCharge();}
+  kazuWrap.classList.add('fire');
+  clearTimeout(kazuWrap._ft);kazuWrap._ft=setTimeout(()=>kazuWrap.classList.remove('fire'),200);
+}
+
+/* ---- SPIN mode: 回転乱れ撃ち ---- */
+function enterSpin(){
+  spinning=true;
+  gauge.classList.remove('full');kazuWrap.classList.remove('charged');
+  charge=0;gaugeFill.style.width='0%';gaugeLabel.textContent='回転乱れ撃ち中！';
+  banner.classList.remove('show');void banner.offsetWidth;banner.classList.add('show');
+  kazuWrap.classList.add('spin');
+  boom();
+  const start=performance.now(), dur=2600;
+  const m0=mouthPos();
+  let last=0;
+  function sweep(now){
+    const t=now-start;
+    // radial sweeping beams from mouth
+    if(now-last>55){
+      last=now;
+      const m=mouthPos();
+      const ang=t/dur*Math.PI*6; // multiple rotations
+      const len=Math.max(W,H);
+      fireBeam(m.x,m.y,m.x+Math.cos(ang)*len,m.y+Math.sin(ang)*len,true);
+      zap(500+Math.random()*900);
+    }
+    // vaporize any target the sweep touches (just clear all gradually)
+    if(targets.size){
+      const arr=[...targets];
+      const victim=arr[Math.floor(Math.random()*arr.length)];
+      const rr=victim.getBoundingClientRect();
+      burst(rr.left+rr.width/2,rr.top+rr.height/2);
+      victim.classList.add('dying');targets.delete(victim);
+      setTimeout(()=>victim.remove(),180);
+      setScore(score+300);
+    }
+    screenFlash(.12);shake(4);
+    if(t<dur){requestAnimationFrame(sweep);}
+    else{
+      kazuWrap.classList.remove('spin');
+      spinning=false;gaugeLabel.textContent='CHARGE';
+      boom();screenFlash(.5);shake(12);
+    }
+  }
+  requestAnimationFrame(sweep);
+}
+
+/* ---- canvas fx: beams + particles ---- */
+const beams=[], particles=[];
+function fireBeam(x0,y0,x1,y1,gold){
+  beams.push({x0,y0,x1,y1,life:1,gold:!!gold});
+  // muzzle sparks
+  for(let i=0;i<14;i++){
+    const a=Math.atan2(y1-y0,x1-x0)+(Math.random()-.5)*1.1;
+    const sp=2+Math.random()*6;
+    particles.push({x:x0,y:y0,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,r:1+Math.random()*2,c:gold?'#ffcf2e':'#38f6ff'});
+  }
+}
+function burst(x,y){
+  boomTiny();
+  for(let i=0;i<28;i++){
+    const a=Math.random()*Math.PI*2, sp=1+Math.random()*7;
+    const col=['#fff','#ff5be1','#38f6ff','#ffcf2e'][i%4];
+    particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,r:1+Math.random()*3,c:col});
+  }
+}
+function boomTiny(){if(muted)return;const c=ac();const t=c.currentTime;const o=c.createOscillator(),g=c.createGain();
+  o.type='triangle';o.frequency.setValueAtTime(420,t);o.frequency.exponentialRampToValueAtTime(90,t+.15);
+  g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.16);o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+.18);}
+
+function drawFx(){
+  ctx.clearRect(0,0,W,H);
+  ctx.globalCompositeOperation='lighter';
+  // beams
+  for(let i=beams.length-1;i>=0;i--){
+    const b=beams[i];b.life-=0.09;
+    if(b.life<=0){beams.splice(i,1);continue;}
+    const dx=b.x1-b.x0,dy=b.y1-b.y0,len=Math.hypot(dx,dy),ux=dx/len,uy=dy/len;
+    const nx=-uy,ny=ux;
+    const core=b.gold?'#fff':'#fff';
+    const glow=b.gold?'rgba(255,207,46,':'rgba(56,246,255,';
+    const glow2=b.gold?'rgba(255,45,45,':'rgba(120,90,255,';
+    const a=b.life;
+    // outer glow
+    ctx.strokeStyle=glow2+(a*.25)+')';ctx.lineWidth=34*a;ctx.lineCap='round';
+    line(b);
+    ctx.strokeStyle=glow+(a*.5)+')';ctx.lineWidth=16*a;line(b);
+    // white core
+    ctx.strokeStyle='rgba(255,255,255,'+(a)+')';ctx.lineWidth=5*a;line(b);
+    // travelling sparkles along beam
+    for(let s=0;s<6;s++){
+      const t=Math.random();
+      const px=b.x0+dx*t+nx*(Math.random()-.5)*10;
+      const py=b.y0+dy*t+ny*(Math.random()-.5)*10;
+      ctx.fillStyle=glow+(a)+')';
+      ctx.beginPath();ctx.arc(px,py,2.2*a,0,7);ctx.fill();
+    }
+    // muzzle flare
+    radial(b.x0,b.y0,40*a,b.gold?'rgba(255,207,46,':'rgba(56,246,255,',a*.8);
+    // impact flare
+    radial(b.x1,b.y1,30*a,'rgba(255,255,255,',a*.7);
+  }
+  // particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.12;p.vx*=.98;p.vy*=.98;p.life-=0.03;
+    if(p.life<=0){particles.splice(i,1);continue;}
+    ctx.globalAlpha=Math.max(0,p.life);
+    ctx.fillStyle=p.c;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*(0.4+p.life),0,7);ctx.fill();
+  }
+  ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  requestAnimationFrame(drawFx);
+}
+function line(b){ctx.beginPath();ctx.moveTo(b.x0,b.y0);ctx.lineTo(b.x1,b.y1);ctx.stroke();}
+function radial(x,y,r,rgb,a){const g=ctx.createRadialGradient(x,y,0,x,y,r);
+  g.addColorStop(0,rgb+a+')');g.addColorStop(1,rgb+'0)');ctx.fillStyle=g;
+  ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();}
+requestAnimationFrame(drawFx);
+
+/* ---- screen flash & shake ---- */
+function screenFlash(a){flash.style.transition='none';flash.style.opacity=a;
+  requestAnimationFrame(()=>{flash.style.transition='opacity .25s';flash.style.opacity=0;});}
+let shakeAmt=0;
+function shake(a){shakeAmt=Math.max(shakeAmt,a);}
+(function shakeLoop(){
+  if(shakeAmt>0.2){const dx=(Math.random()-.5)*shakeAmt,dy=(Math.random()-.5)*shakeAmt;
+    stage.style.transform=`translate(${dx}px,${dy}px)`;shakeAmt*=.85;}
+  else{stage.style.transform='';shakeAmt=0;}
+  requestAnimationFrame(shakeLoop);
+})();
+
+/* ---- loops ---- */
+let spawnT=0;
+function tick(){
+  if(running){
+    // combo decay
+    if(comboTimer>0){comboTimer--;if(comboTimer===0){combo=0;setCombo(0);}}
+    // spawn
+    spawnT--;
+    if(spawnT<=0 && targets.size<7 && !spinning){spawnTarget();spawnT=45+Math.random()*40;}
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---- start ---- */
+$('#playBtn').onclick=()=>{
+  try{ac().resume();}catch(e){}
+  $('#start').style.display='none';
+  running=true;
+  for(let i=0;i<3;i++)spawnTarget();
+};
+</script>
+</body>
+</html>
